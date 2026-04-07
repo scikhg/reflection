@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <!-- 화면 배율 고정 및 노치 디자인(viewport-fit) 대응 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>가상 실험실: 빛의 반사 법칙 (Tablet & Chromebook Opt.)</title>
+    <style>
+        /* 기본 레이아웃 및 태블릿 터치 스크롤 방지 */
+        html, body {
+            width: 100%; 
+            height: 100%; /* Fallback */
+            height: 100dvh; /* 모바일/태블릿 주소창 제외 실제 높이 */
+            margin: 0; padding: 0;
+            overflow: hidden; 
+            background-color: #f4f6f9;
+            font-family: 'Pretendard', 'Malgun Gothic', sans-serif;
+            box-sizing: border-box;
+            user-select: none;
+            touch-action: none; /* 브라우저 자체 제스처(당겨서 새로고침 등) 완벽 차단 */
+        }
+
+        #app {
+            display: flex;
+            flex-direction: column;
+            width: 100%; max-width: 1100px;
+            height: 100%;
+            height: 100dvh;
+            margin: 0 auto;
+            padding: 1.5vh 2vw; /* 픽셀 대신 화면 비율 사용 */
+            box-sizing: border-box;
+        }
+
+        /* 상단 UI 패널 자동 축소/확대 */
+        #ui-panel {
+            background: #e3f2fd;
+            border-radius: 8px;
+            border-left: 5px solid #2196f3;
+            padding: 1.5vh 15px;
+            margin-bottom: 1vh;
+            flex-shrink: 0; 
+            box-sizing: border-box;
+            position: relative;
+        }
+        
+        #header-title { margin: 0 0 0.5vh 0; color: #333; font-size: clamp(14px, 2.5vh, 20px); }
+        .step-title { font-weight: bold; color: #1565c0; font-size: clamp(13px, 2.2vh, 18px); margin-bottom: 0.5vh; }
+        .instruction { font-size: clamp(12px, 2vh, 16px); color: #333; line-height: 1.4; word-break: keep-all; }
+        
+        #action-btn {
+            position: absolute; right: 15px; top: 50%; transform: translateY(-50%);
+            padding: 1vh 3vw; font-size: clamp(11px, 2vh, 14px); font-weight: bold;
+            background-color: #4caf50; color: white; border: none; border-radius: 6px; cursor: pointer; display: none;
+            transition: background-color 0.3s;
+            z-index: 20;
+            white-space: nowrap;
+        }
+
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
+            70% { box-shadow: 0 0 0 12px rgba(76, 175, 80, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
+        }
+        @keyframes pulse-blue {
+            0% { box-shadow: 0 0 0 0 rgba(25, 118, 210, 0.7); }
+            70% { box-shadow: 0 0 0 12px rgba(25, 118, 210, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(25, 118, 210, 0); }
+        }
+        .blink-btn-green { animation: pulse-green 1.5s infinite; }
+        .blink-btn-blue { animation: pulse-blue 1.5s infinite; }
+
+        #lab-container {
+            flex: 1; min-height: 0; /* 부모 크기 안에서만 존재하도록 강제 */
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            padding: 1.5vh;
+            box-sizing: border-box;
+        }
+
+        #lab-wrapper {
+            flex: 1; min-height: 0;
+            position: relative; 
+            width: 100%;
+            border-radius: 8px;
+        }
+
+        canvas {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: #e9ecef; border: 2px solid #dee2e6;
+            border-radius: 8px; cursor: grab; touch-action: none;
+            box-sizing: border-box;
+        }
+        
+        #status-board {
+            height: clamp(35px, 6vh, 45px); flex-shrink: 0;
+            display: none; justify-content: center; gap: 4vw;
+            margin-top: 1vh; font-size: clamp(12px, 2vh, 16px); font-weight: bold; align-items: center;
+        }
+        .val-box { background: #fff3e0; padding: 0.5vh 3vw; border-radius: 6px; border: 2px solid #ffb74d; display: flex; align-items: center;}
+        .inc-text { color: #d32f2f; margin-left: 5px; }
+        .ref-text { color: #1976d2; margin-left: 5px; }
+        
+        .quiz-input {
+            position: absolute; transform: translate(-50%, -50%);
+            text-align: center; pointer-events: auto;
+            font-size: clamp(11px, 2vh, 14px);
+            border: 2px solid #ccc; border-radius: 4px; padding: 4px;
+            width: clamp(55px, 12vw, 75px);
+            box-sizing: border-box; font-family: 'Pretendard', sans-serif;
+            font-weight: bold; outline: none; background-color: rgba(255, 255, 255, 0.95);
+            transition: all 0.3s ease;
+        }
+        .quiz-input::placeholder { color: #999; font-weight: normal; }
+
+        @keyframes glow-input {
+            0% { border-color: #ccc; box-shadow: 0 0 0px transparent; }
+            50% { border-color: #2196f3; box-shadow: 0 0 8px rgba(33, 150, 243, 0.8); }
+            100% { border-color: #ccc; box-shadow: 0 0 0px transparent; }
+        }
+        @keyframes glow-input-error {
+            0% { border-color: #f44336; box-shadow: 0 0 0px transparent; }
+            50% { border-color: #f44336; box-shadow: 0 0 8px rgba(244, 67, 54, 0.8); }
+            100% { border-color: #f44336; box-shadow: 0 0 0px transparent; }
+        }
+        .blink-input { animation: glow-input 1.5s infinite; }
+        .blink-input-error { animation: glow-input-error 1.5s infinite; }
+
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <div id="ui-panel">
+        <h1 id="header-title">🔍 빛의 반사 가상 실험실</h1>
+        <div class="step-title" id="step-title">1단계: 각도기 배치</div>
+        <div class="instruction" id="instruction">좌측 상단의 <b>각도기</b>를 드래그하여 중앙의 붉은 점선 원 안으로 가져다 놓으세요.</div>
+        <button id="action-btn">다음 단계로</button>
+    </div>
+
+    <div id="lab-container">
+        <div id="lab-wrapper">
+            <canvas id="labCanvas"></canvas>
+            <div id="quiz-container" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;">
+                <input type="text" id="q-normal" class="quiz-input" placeholder="빈칸">
+                <input type="text" id="q-inc-ray" class="quiz-input" placeholder="빈칸">
+                <input type="text" id="q-ref-ray" class="quiz-input" placeholder="빈칸">
+                <input type="text" id="q-inc-angle" class="quiz-input" placeholder="빈칸" style="width: 55px;">
+                <input type="text" id="q-ref-angle" class="quiz-input" placeholder="빈칸" style="width: 55px;">
+            </div>
+        </div>
+        
+        <div id="status-board">
+            <div class="val-box">입사각: <span id="inc-angle" class="inc-text">0</span>°</div>
+            <div class="val-box">반사각: <span id="ref-angle" class="ref-text">0</span>°</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('labCanvas');
+    const ctx = canvas.getContext('2d');
+    const wrapper = document.getElementById('lab-wrapper');
+    
+    const stepTitle = document.getElementById('step-title');
+    const instruction = document.getElementById('instruction');
+    const actionBtn = document.getElementById('action-btn');
+    const statusBoard = document.getElementById('status-board');
+    const incAngleTxt = document.getElementById('inc-angle');
+    const refAngleTxt = document.getElementById('ref-angle');
+
+    let step = 1;
+    let isDragging = false;
+    let dragTarget = null;
+
+    let CENTER_X, CENTER_Y, PROTRACTOR_R, LASER_DIST, MIRROR_W;
+
+    const items = {
+        protractor: { x: 0, y: 0, placed: false },
+        mirror: { x: 0, y: 0, placed: false }, 
+        laser: { angle: 135, dist: 0, active: false } 
+    };
+
+    const quizInputs = document.querySelectorAll('.quiz-input');
+    quizInputs.forEach(input => {
+        input.addEventListener('input', () => {
+            if (input.value.trim() !== '') {
+                input.classList.remove('blink-input', 'blink-input-error');
+            } else {
+                input.classList.add('blink-input');
+            }
+        });
+    });
+
+    function resizeCanvas() {
+        if (!wrapper) return;
+        const rect = wrapper.getBoundingClientRect();
+        
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        
+        CENTER_X = canvas.width / 2;
+        // 기기 가로/세로 비율에 맞춰 중심축 유동적 설정
+        CENTER_Y = canvas.height * 0.75; 
+
+        // 태블릿 세로모드(Portrait)와 가로모드(Landscape)에 모두 대응하는 계산법
+        let minDimension = Math.min(canvas.width, canvas.height);
+        PROTRACTOR_R = minDimension * 0.4; // 좁은 쪽의 40%
+        
+        LASER_DIST = canvas.height * 0.6; // 기본 레이저 길이
+        if(LASER_DIST > canvas.width * 0.45) LASER_DIST = canvas.width * 0.45; // 화면 밖으로 나가는 것 방지
+        
+        MIRROR_W = PROTRACTOR_R * 1.5;
+        items.laser.dist = LASER_DIST;
+
+        if (!items.protractor.placed && step === 1) {
+            items.protractor.x = Math.max(70, canvas.width * 0.15);
+            items.protractor.y = Math.max(70, canvas.height * 0.2);
+        }
+        if (!items.mirror.placed && step <= 2) {
+            items.mirror.x = Math.max(70, canvas.width * 0.15);
+            items.mirror.y = Math.max(70, canvas.height * 0.2);
+        }
+
+        positionQuizInputs();
+        draw();
+    }
+
+    // 창 크기 조절 및 기기 회전 시 리사이즈 (디바운스/지연 적용)
+    window.addEventListener('resize', () => { setTimeout(resizeCanvas, 50); });
+    window.addEventListener('orientationchange', () => { setTimeout(resizeCanvas, 100); });
+
+    function positionQuizInputs() {
+        if(step !== 4) return;
+        const setPos = (id, x, y) => {
+            const el = document.getElementById(id);
+            if(el) { el.style.left = x + 'px'; el.style.top = y + 'px'; }
+        };
+
+        setPos('q-normal', CENTER_X, CENTER_Y - PROTRACTOR_R - 35);
+        let radInc = 135 * Math.PI / 180;
+        setPos('q-inc-ray', CENTER_X + Math.cos(radInc)*(LASER_DIST*0.6), CENTER_Y - Math.sin(radInc)*(LASER_DIST*0.6) - 20);
+        let radRef = 45 * Math.PI / 180;
+        setPos('q-ref-ray', CENTER_X + Math.cos(radRef)*(LASER_DIST*0.6), CENTER_Y - Math.sin(radRef)*(LASER_DIST*0.6) - 20);
+
+        let aRadInc = 112.5 * Math.PI / 180;
+        setPos('q-inc-angle', CENTER_X + Math.cos(aRadInc)*(PROTRACTOR_R*0.5), CENTER_Y - Math.sin(aRadInc)*(PROTRACTOR_R*0.5));
+        let aRadRef = 67.5 * Math.PI / 180;
+        setPos('q-ref-angle', CENTER_X + Math.cos(aRadRef)*(PROTRACTOR_R*0.5), CENTER_Y - Math.sin(aRadRef)*(PROTRACTOR_R*0.5));
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (step === 1) {
+            ctx.beginPath(); ctx.arc(CENTER_X, CENTER_Y, 20, 0, Math.PI*2);
+            ctx.setLineDash([5, 5]); ctx.strokeStyle = '#f44336'; ctx.stroke();
+            ctx.setLineDash([]); ctx.fillStyle = '#f44336'; ctx.font = 'bold 14px Pretendard'; ctx.textAlign = 'center';
+            ctx.fillText('각도기 위치', CENTER_X, CENTER_Y + 35);
+        }
+
+        if (step === 2) {
+            ctx.setLineDash([6, 4]); ctx.strokeStyle = '#ff9800'; ctx.lineWidth = 2;
+            ctx.strokeRect(CENTER_X - MIRROR_W/2, CENTER_Y - 5, MIRROR_W, 10);
+            ctx.setLineDash([]); ctx.fillStyle = '#ff9800'; ctx.font = 'bold 14px Pretendard'; ctx.textAlign = 'center';
+            ctx.fillText('거울 위치', CENTER_X, CENTER_Y + 25);
+        }
+
+        if (items.protractor.placed) drawProtractor(CENTER_X, CENTER_Y, PROTRACTOR_R);
+        else if (step === 1) drawMiniProtractor(items.protractor.x, items.protractor.y);
+
+        if (items.mirror.placed) {
+            ctx.fillStyle = '#bdbdbd'; ctx.fillRect(CENTER_X - MIRROR_W/2, CENTER_Y - 5, MIRROR_W, 10); 
+            ctx.fillStyle = '#757575'; ctx.fillRect(CENTER_X - MIRROR_W/2, CENTER_Y + 5, MIRROR_W, 6);
+            if (step !== 4) {
+                ctx.fillStyle = '#000'; ctx.font = 'bold 13px Pretendard'; ctx.textAlign = 'center';
+                ctx.fillText('거울 면', CENTER_X, CENTER_Y + 25);
+            }
+        } else if (step === 2 && !items.mirror.placed) {
+            drawMiniMirror(items.mirror.x, items.mirror.y);
+        }
+
+        if (step >= 4) {
+            ctx.beginPath(); ctx.moveTo(CENTER_X, CENTER_Y); ctx.lineTo(CENTER_X, CENTER_Y - LASER_DIST);
+            ctx.setLineDash([8, 6]); ctx.strokeStyle = '#424242'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+            if (step !== 4) {
+                ctx.fillStyle = '#424242'; ctx.font = 'bold 14px Pretendard'; ctx.textAlign = 'center';
+                ctx.fillText('법선', CENTER_X, CENTER_Y - LASER_DIST - 10);
+            }
+        }
+
+        if (items.laser.active) drawLaserSystem();
+    }
+
+    function drawMiniProtractor(x, y) {
+        ctx.fillStyle = 'rgba(173, 216, 230, 0.8)'; ctx.beginPath(); ctx.arc(x, y, 40, Math.PI, 0); ctx.fill();
+        ctx.strokeStyle = '#546e7a'; ctx.stroke(); ctx.fillStyle = '#000'; ctx.font = 'bold 13px Pretendard'; ctx.textAlign = 'center'; ctx.fillText('각도기', x, y - 5);
+    }
+
+    function drawMiniMirror(x, y) {
+        ctx.fillStyle = '#9e9e9e'; ctx.fillRect(x - 30, y - 10, 60, 20);
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 12px Pretendard'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('거울', x, y); ctx.textBaseline = 'alphabetic'; 
+    }
+
+    function drawProtractor(x, y, r) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; ctx.beginPath(); ctx.arc(x, y, r, Math.PI, 0); ctx.fill();
+        ctx.strokeStyle = '#78909c'; ctx.stroke(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#37474f';
+
+        for (let mathAngle = 0; mathAngle <= 180; mathAngle += 10) {
+            let rad = mathAngle * Math.PI / 180;
+            let tx1 = x + Math.cos(rad) * r; let ty1 = y - Math.sin(rad) * r; 
+            let tx2 = x + Math.cos(rad) * (r - Math.max(5, r*0.05)); let ty2 = y - Math.sin(rad) * (r - Math.max(5, r*0.05));
+            ctx.beginPath(); ctx.moveTo(tx1, ty1); ctx.lineTo(tx2, ty2); ctx.stroke();
+            
+            if(mathAngle % 30 === 0 || mathAngle === 90) {
+                let tx3 = x + Math.cos(rad) * (r - Math.max(20, r*0.15)); let ty3 = y - Math.sin(rad) * (r - Math.max(20, r*0.15));
+                ctx.font = (mathAngle===90) ? 'bold 13px Arial' : '11px Arial';
+                ctx.fillText((180 - mathAngle).toString(), tx3, ty3);
+            }
+        }
+    }
+
+    function drawLaserSystem() {
+        let mathAngle = items.laser.angle; let rad = mathAngle * Math.PI / 180;
+        let lx = CENTER_X + Math.cos(rad) * items.laser.dist; let ly = CENTER_Y - Math.sin(rad) * items.laser.dist;
+
+        ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(CENTER_X, CENTER_Y);
+        ctx.strokeStyle = 'rgba(211, 47, 47, 0.85)'; ctx.lineWidth = 4; ctx.stroke();
+
+        let refMathAngle = 180 - mathAngle; let refRad = refMathAngle * Math.PI / 180;
+        let rx = CENTER_X + Math.cos(refRad) * items.laser.dist; let ry = CENTER_Y - Math.sin(refRad) * items.laser.dist;
+        
+        ctx.beginPath(); ctx.moveTo(CENTER_X, CENTER_Y); ctx.lineTo(rx, ry);
+        ctx.strokeStyle = 'rgba(25, 118, 210, 0.85)'; ctx.lineWidth = 4; ctx.stroke();
+
+        if (step !== 4) {
+            ctx.font = 'bold 12px Pretendard';
+            ctx.fillStyle = '#c62828'; ctx.fillText('입사광선', CENTER_X + Math.cos(rad) * (LASER_DIST*0.7), CENTER_Y - Math.sin(rad) * (LASER_DIST*0.7) - 15);
+            ctx.fillStyle = '#1565c0'; ctx.fillText('반사광선', CENTER_X + Math.cos(refRad) * (LASER_DIST*0.7), CENTER_Y - Math.sin(refRad) * (LASER_DIST*0.7) - 15);
+        }
+
+        let normalRad = Math.PI / 2; let arcRadius = PROTRACTOR_R * 0.35; 
+        ctx.beginPath(); ctx.arc(CENTER_X, CENTER_Y, arcRadius, -normalRad, -rad, (mathAngle > 90));
+        ctx.strokeStyle = '#d32f2f'; ctx.lineWidth = 2; ctx.stroke();
+        
+        ctx.beginPath(); ctx.arc(CENTER_X, CENTER_Y, arcRadius, -normalRad, -refRad, !(mathAngle > 90));
+        ctx.strokeStyle = '#1976d2'; ctx.lineWidth = 2; ctx.stroke();
+
+        if (step !== 4) {
+            ctx.font = 'bold 11px Pretendard';
+            let incMidRad = (-normalRad + -rad) / 2; ctx.fillStyle = '#d32f2f';
+            ctx.fillText('입사각', CENTER_X + Math.cos(incMidRad)*(arcRadius+15), CENTER_Y + Math.sin(incMidRad)*(arcRadius+15));
+            let refMidRad = (-normalRad + -refRad) / 2; ctx.fillStyle = '#1976d2';
+            ctx.fillText('반사각', CENTER_X + Math.cos(refMidRad)*(arcRadius+15), CENTER_Y + Math.sin(refMidRad)*(arcRadius+15));
+        }
+
+        ctx.fillStyle = '#263238'; ctx.save(); ctx.translate(lx, ly); ctx.rotate(-rad); ctx.fillRect(-25, -8, 50, 16); 
+        ctx.fillStyle = '#ff1744'; ctx.beginPath(); ctx.arc(25, 0, 4, 0, Math.PI*2); ctx.fill(); ctx.restore();
+    }
+
+    function getEventPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        let clientX = e.clientX, clientY = e.clientY;
+        if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; }
+        return { x: clientX - rect.left, y: clientY - rect.top };
+    }
+
+    function handleStart(e) {
+        if(step === 4) return; 
+        const pos = getEventPos(e); let mx = pos.x, my = pos.y;
+
+        if (step === 1) {
+            if (Math.sqrt((mx-items.protractor.x)**2 + (my-items.protractor.y)**2) < 50) { isDragging = true; dragTarget = 'protractor'; }
+        } else if (step === 2) {
+            if (mx > items.mirror.x - 40 && mx < items.mirror.x + 40 && my > items.mirror.y - 15 && my < items.mirror.y + 15) { isDragging = true; dragTarget = 'mirror'; }
+        } else if (step >= 5 && items.laser.active) {
+            if (my < CENTER_Y) { isDragging = true; dragTarget = 'laser'; }
+        }
+    }
+
+    function handleMove(e) {
+        if (!isDragging) return;
+        const pos = getEventPos(e); let mx = pos.x, my = pos.y;
+
+        if (dragTarget === 'protractor') { items.protractor.x = mx; items.protractor.y = my; }
+        else if (dragTarget === 'mirror') { items.mirror.x = mx; items.mirror.y = my; }
+        else if (dragTarget === 'laser') {
+            let dx = mx - CENTER_X; let dy = CENTER_Y - my; 
+            if (dy > 0) {
+                let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                if (angle < 5) angle = 5; if (angle > 175) angle = 175;
+                items.laser.angle = Math.round(angle);
+                updateStatusBoard();
+            }
+        }
+        draw();
+    }
+
+    function handleEnd() {
+        if (!isDragging) return;
+        isDragging = false;
+        let snapDist = canvas.width * 0.15; // 모바일/태블릿을 위해 스냅 범위 확대
+        
+        if (dragTarget === 'protractor') {
+            if (Math.sqrt((items.protractor.x-CENTER_X)**2 + (items.protractor.y-CENTER_Y)**2) < snapDist) { items.protractor.placed = true; setStep(2); }
+        } else if (dragTarget === 'mirror') {
+            if (Math.sqrt((items.mirror.x-CENTER_X)**2 + (items.mirror.y-CENTER_Y)**2) < snapDist) { items.mirror.placed = true; setStep(3); }
+        } else if (dragTarget === 'laser') { checkExperimentGoal(); }
+        
+        dragTarget = null; draw();
+    }
+
+    canvas.addEventListener('mousedown', handleStart);
+    window.addEventListener('mousemove', (e) => { if(isDragging) handleMove(e); });
+    window.addEventListener('mouseup', handleEnd);
+    
+    // 태블릿/스마트폰 터치 이벤트
+    canvas.addEventListener('touchstart', (e) => { handleStart(e); }, {passive: false});
+    window.addEventListener('touchmove', (e) => { if(isDragging){ e.preventDefault(); handleMove(e); } }, {passive: false});
+    window.addEventListener('touchend', handleEnd);
+
+    actionBtn.addEventListener('click', () => { if (step === 4) checkQuiz(); else nextAction(); });
+
+    function updateStatusBoard() {
+        let incidence = Math.abs(90 - (180 - items.laser.angle)); 
+        incAngleTxt.innerText = incidence;
+        refAngleTxt.innerText = incidence;
+    }
+
+    function checkExperimentGoal() {
+        let incidence = Math.abs(90 - (180 - items.laser.angle));
+        let target = (step === 5) ? 30 : (step === 6) ? 45 : (step === 7) ? 60 : -1;
+        if (incidence === target) {
+            actionBtn.style.display = 'inline-block';
+            actionBtn.innerText = `입사각 ${target}° (다음으로)`;
+            actionBtn.style.backgroundColor = '#1976d2'; 
+            actionBtn.className = 'blink-btn-blue';
+        } else { 
+            actionBtn.style.display = 'none'; 
+            actionBtn.className = ''; 
+        }
+    }
+
+    function checkQuiz() {
+        const inputs = [{ id: 'q-normal', ans: '법선' }, { id: 'q-inc-ray', ans: '입사광선' }, { id: 'q-ref-ray', ans: '반사광선' }, { id: 'q-inc-angle', ans: '입사각' }, { id: 'q-ref-angle', ans: '반사각' }];
+        let allCorrect = true;
+        inputs.forEach(item => {
+            const el = document.getElementById(item.id);
+            if (el.value.replace(/\s+/g, '') === item.ans) { 
+                el.style.borderColor = '#4caf50'; el.style.backgroundColor = '#e8f5e9'; 
+                el.classList.remove('blink-input', 'blink-input-error'); 
+            } else { 
+                el.style.borderColor = '#f44336'; el.style.backgroundColor = '#ffebee'; 
+                el.classList.remove('blink-input');
+                el.classList.add('blink-input-error');
+                allCorrect = false; 
+            }
+        });
+        if (allCorrect) {
+            instruction.innerHTML = "<b style='color:#4caf50;'>🎉 정답!</b> 잠시 후 실험을 시작합니다.";
+            actionBtn.style.display = 'none'; actionBtn.className = '';
+            setTimeout(() => setStep(5), 1500);
+        }
+    }
+
+    function setStep(newStep) {
+        step = newStep;
+        actionBtn.style.display = 'none';
+        actionBtn.className = ''; 
+        actionBtn.style.backgroundColor = '#4caf50'; 
+
+        if (step === 2) {
+            document.getElementById('step-title').innerText = "2단계: 평면거울 세우기";
+            instruction.innerHTML = "좌측 상단의 <b>평면거울</b>을 드래그하여, 거울 안내선 위치에 세우세요.";
+            items.mirror.x = Math.max(70, canvas.width * 0.15); items.mirror.y = Math.max(70, canvas.height * 0.2);
+        } else if (step === 3) {
+            document.getElementById('step-title').innerText = "3단계: 법선 긋기";
+            instruction.innerHTML = "입사각의 기준이 되는, 거울에 수직인 선(법선)을 긋습니다.";
+            actionBtn.style.display = 'inline-block'; 
+            actionBtn.innerText = '법선 긋기';
+            actionBtn.className = 'blink-btn-green'; 
+        } else if (step === 4) {
+            document.getElementById('step-title').innerText = "4단계: 명칭 입력하기";
+            instruction.innerHTML = "빈칸에 알맞은 명칭을 입력하세요. <br><span style='font-size:0.85em; color:#666;'>(입사광선, 반사광선, 법선, 입사각, 반사각)</span>";
+            items.laser.active = true; items.laser.angle = 135;
+            document.getElementById('quiz-container').style.display = 'block';
+            
+            quizInputs.forEach(input => {
+                input.value = '';
+                input.style.borderColor = '#ccc'; input.style.backgroundColor = 'rgba(255, 255, 255, 0.95)';
+                input.classList.remove('blink-input-error');
+                input.classList.add('blink-input');
+            });
+
+            actionBtn.style.display = 'inline-block'; 
+            actionBtn.innerText = '정답 확인';
+            actionBtn.className = 'blink-btn-green'; 
+            positionQuizInputs(); 
+        } else if (step === 5) {
+            document.getElementById('quiz-container').style.display = 'none';
+            statusBoard.style.display = 'flex'; items.laser.active = true;
+            document.getElementById('step-title').innerText = "5단계: 입사각 30° 측정";
+            instruction.innerHTML = "<b>레이저를 드래그</b>하여 <b>입사각이 30°</b>가 되도록 맞추세요.";
+            items.laser.angle = 140; updateStatusBoard();
+        } else if (step === 6) {
+            document.getElementById('step-title').innerText = "6단계: 입사각 45° 측정";
+            instruction.innerHTML = "레이저를 움직여 <b>입사각을 45°</b>로 맞추고 반사각을 확인하세요.";
+        } else if (step === 7) {
+            document.getElementById('step-title').innerText = "7단계: 입사각 60° 측정";
+            instruction.innerHTML = "마지막으로 <b>입사각을 60°</b>로 맞추고 결과를 확인하세요.";
+        } else if (step === 8) {
+            document.getElementById('step-title').innerText = "🎉 실험 완료!";
+            instruction.innerHTML = "실험 결과, <b>'입사각 = 반사각'</b>이라는 <b>빛의 반사 법칙</b>을 발견했습니다! 레이저를 자유롭게 움직여보세요.";
+        }
+        
+        draw();
+        setTimeout(resizeCanvas, 30); 
+    }
+
+    function nextAction() {
+        if (step === 3) setStep(4);
+        else if (step === 5) setStep(6);
+        else if (step === 6) setStep(7);
+        else if (step === 7) setStep(8);
+    }
+    
+    // 초기 로딩 시 화면 최적화
+    setTimeout(resizeCanvas, 50);
+</script>
+</body>
+</html>
